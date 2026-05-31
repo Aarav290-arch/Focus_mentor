@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: mind-mentor-backend
+    env: node
+    buildCommand: npm ci
+    startCommand: node --expose-gc --max-old-space-size=512 index.js
+    healthCheckPath: /
+    plan: standard
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000
+      - key: MONGODB_URI
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_API_KEY_RAG
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: HUGGINGFACE_API_KEY
+        sync: false
+      - key: JWT_SECRET
+        sync: false

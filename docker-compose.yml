@@ -1,0 +1,60 @@
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - MONGODB_URI=mongodb://admin:password@host.docker.internal:27017/mind_mentor?authSource=admin
+      - NEXTAUTH_URL=http://localhost:3000
+      - EXPRESS_BACKEND_URL=http://backend:8000
+      - NEXT_PUBLIC_POSTHOG_KEY=${NEXT_PUBLIC_POSTHOG_KEY}
+      - NEXT_PUBLIC_POSTHOG_HOST=${NEXT_PUBLIC_POSTHOG_HOST}
+      - NEXT_PUBLIC_API_URL=http://backend:8000
+      - API_URL=http://backend:8000
+      - GROQ_API_KEY=${GROQ_API_KEY}
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - app-network
+    volumes:
+      - .:/app
+      - /app/node_modules
+
+  backend:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - MONGODB_URI=mongodb://admin:password@host.docker.internal:27017/mind_mentor?authSource=admin
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - GROQ_API_KEY_RAG=${GROQ_API_KEY_RAG}
+      - TAVILY_API_KEY=${TAVILY_API_KEY}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-Xenova/all-MiniLM-L6-v2}
+      - JWT_SECRET=${NEXTAUTH_SECRET}
+    volumes:
+      - ./server/uploads:/app/uploads
+      - ./server/models:/app/models
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 2m
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  uploads:
+  models:

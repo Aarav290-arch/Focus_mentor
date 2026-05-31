@@ -1,0 +1,389 @@
+"use client"
+
+import { useState, useEffect, useCallback } from "react";
+import StudyPlanForm from '@/components/StudyPlanForm';
+import { StoredPlan } from "@/components/study-plan/StoredPlan";
+import { Separator } from "@/components/ui/separator";
+import type { StudyPlan } from "@/components/study-plan/StoredPlan";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useSession } from "next-auth/react";
+import { apiClient } from "@/lib/api-client";
+import { useToast } from "@/hooks/use-toast";
+import { PaginationNav } from "@/components/ui/pagination-nav";
+import { Button } from "@/components/ui/button";
+import { Loader2 } from "lucide-react";
+
+const ITEMS_PER_PAGE = 5;
+
+export default function StudyPlanPage() {
+  const { data: session } = useSession();
+  const [storedPlans, setStoredPlans] = useState<StudyPlan[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const { toast } = useToast();
+
+  const fetchPlans = useCallback(async (force = false) => {
+    // Use the actual logged-in user's email as the consistent user ID
+    const userId = session?.user?.email || 'rishabh45628@gmail.com';
+    
+    try {
+      setLoading(true);
+      console.log('Fetching plans for user:', userId, 'force:', force);
+      
+      // Clear state first if force refresh
+      if (force) {
+        setStoredPlans([]);
+        
+        // Clear all browser caches
+        if ('caches' in window) {
+          await caches.keys().then(cacheNames => {
+            return Promise.all(
+              cacheNames.map(cacheName => caches.delete(cacheName))
+            );
+          });
+        }
+      }
+      
+      // Use frontend API route instead of direct backend calls to avoid CORS issues
+      console.log('Using frontend API route...');
+      try {
+        const frontendApiUrl = `/api/study-plan/${encodeURIComponent(userId)}`;
+        console.log('Frontend API URL:', frontendApiUrl);
+        
+        const response = await fetch(frontendApiUrl, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
+          },
+          cache: 'no-store'
+        });
+        
+        console.log('Frontend API response status:', response.status, response.statusText);
+        
+        if (response.ok) {
+          const data = await response.json();
+          console.log('Frontend API response:', data);
+          
+          if (data.success && data.plans && data.plans.length > 0) {
+            console.log('Found plans via frontend API:', data.plans.length);
+            const sortedPlans = data.plans.sort((a: StudyPlan, b: StudyPlan) => 
+              new Date(b.createdAt || b._id).getTime() - new Date(a.createdAt || a._id).getTime()
+            );
+            setStoredPlans(sortedPlans);
+            setLoading(false);
+            return;
+          } else if (data.success && data.plans && data.plans.length === 0) {
+            console.log('No plans found in API response');
+            setStoredPlans([]);
+            setLoading(false);
+            return;
+          }
+        } else {
+          const errorText = await response.text();
+          console.error('Frontend API error:', response.status, errorText);
+        }
+      } catch (apiError) {
+        console.log('Frontend API failed:', apiError);
+      }
+      
+      // Fallback to api-client if direct API call failed
+      try {
+        const data = await apiClient.getStudyPlan(userId, force);
+        console.log('Raw API client response:', data);
+        console.log('Response type:', typeof data, 'Is array:', Array.isArray(data));
+        console.log('Response keys:', Object.keys(data || {}));
+        
+        if (data.error) {
+        console.error("API returned error:", data.error);
+        toast({
+          variant: "error",
+          title: "Error",
+          description: "Failed to fetch study plans. Please try again."
+        });
+        setStoredPlans([]);
+        return;
+      }
+      
+      // Handle multiple response formats
+      let plansArray = [];
+      if (data.plans && Array.isArray(data.plans)) {
+        plansArray = data.plans;
+      } else if (data.success && data.plans) {
+        plansArray = Array.isArray(data.plans) ? data.plans : [];
+      } else if (Array.isArray(data)) {
+        plansArray = data;
+      } else if (data && typeof data === 'object' && data.plan) {
+        // Single plan response
+        plansArray = [data.plan];
+      }
+      
+      console.log('Processed plans array:', plansArray, 'Length:', plansArray.length);
+      
+      // Force display plans even if there are errors
+      if (plansArray.length === 0 && !force) {
+        // Try one more time with frontend API
+        console.log('No plans found, trying frontend API one more time...');
+        try {
+          const retryResponse = await fetch(`/api/study-plan/${userId}`, {
+            headers: {
+              'Cache-Control': 'no-cache, no-store, must-revalidate',
+              'Pragma': 'no-cache',
+              'Expires': '0'
+            },
+            cache: 'no-store'
+          });
+          if (retryResponse.ok) {
+            const retryData = await retryResponse.json();
+            if (retryData.success && retryData.plans) {
+              plansArray = retryData.plans;
+              console.log('Found plans via frontend API retry:', plansArray.length);
+            }
+          }
+        } catch (retryError) {
+          console.log('Frontend API retry also failed:', retryError);
+        }
+      }
+      
+      if (plansArray.length > 0) {
+        // Sort plans by _id as a fallback for creation time
+        const sortedPlans = plansArray.sort((a: StudyPlan, b: StudyPlan) => 
+          b._id.localeCompare(a._id)
+        );
+        console.log('Setting plans in state:', sortedPlans.length, 'plans');
+        console.log('Plan IDs:', sortedPlans.map(p => p._id));
+        console.log('Plan subjects:', sortedPlans.map(p => p.overview?.subject));
+        setStoredPlans(sortedPlans);
+      } else {
+        console.log('No plans found, setting empty array');
+        setStoredPlans([]);
+      }
+      } catch (fallbackError) {
+        console.error('All API calls failed:', fallbackError);
+        setStoredPlans([]);
+      }
+    } catch (error) {
+      console.error("Error fetching stored plans:", error);
+      toast({
+        variant: "error",
+        title: "Error",
+        description: "Failed to fetch study plans. Please try again."
+      });
+      setStoredPlans([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [session?.user?.id, toast]);
+
+  useEffect(() => {
+    fetchPlans(false);
+  }, [fetchPlans]);
+
+  const handlePlanGenerated = (plan?: any) => {
+    // Force refresh the plans list after a short delay
+    setTimeout(() => {
+      fetchPlans(true);
+    }, 500);
+  };
+
+  const handleCleanupAIPlans = async () => {
+    const userId = session?.user?.email || 'rishabh45628@gmail.com';
+    
+    try {
+      setLoading(true);
+      console.log('Cleaning up AI plans for user:', userId);
+      
+      const response = await fetch('/api/cleanup-ai-plans', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ userId })
+      });
+      
+      const result = await response.json();
+      console.log('Cleanup result:', result);
+      
+      if (result.success) {
+        toast({
+          title: "Success",
+          description: `Cleaned up ${result.deletedCount || 0} old AI plans. You can now generate fresh AI content.`,
+        });
+        
+        // Refresh the plans list
+        setTimeout(() => {
+          fetchPlans(true);
+        }, 1000);
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: result.error || "Failed to cleanup AI plans"
+        });
+      }
+    } catch (error) {
+      console.error('Cleanup error:', error);
+      toast({
+        variant: "destructive",
+        title: "Error", 
+        description: "Failed to cleanup AI plans. Please try again."
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePlanDelete = async (planId: string) => {
+    console.log('Deleting plan with ID:', planId);
+    
+    // Optimistically remove from UI immediately
+    setStoredPlans(prev => prev.filter(plan => plan._id !== planId));
+    
+    try {
+      const response = await apiClient.deleteStudyPlan(planId);
+      console.log('Delete response:', response);
+      
+      if (response.success) {
+        toast({
+          variant: "success", 
+          title: "Success",
+          description: response.message || "Study plan deleted successfully."
+        });
+        
+        // Force refetch to ensure UI is in sync with backend
+        // Small delay to ensure backend has processed deletion
+        await new Promise(resolve => setTimeout(resolve, 300));
+        await fetchPlans(true);
+      } else {
+        throw new Error(response.message || 'Failed to delete plan');
+      }
+    } catch (error: unknown) {
+      console.error("Error deleting plan:", error);
+      // Restore the plan by re-fetching if delete failed
+      fetchPlans(true);
+      toast({
+        variant: "error",
+        title: "Error", 
+        description: error instanceof Error ? error.message : "Failed to delete study plan. Please try again."
+      });
+    }
+  };
+
+  // Pagination calculations
+  const totalPages = Math.ceil(storedPlans.length / ITEMS_PER_PAGE);
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const endIndex = startIndex + ITEMS_PER_PAGE;
+  const currentPlans = storedPlans.slice(startIndex, endIndex);
+
+  return (
+    <div className="p-4 sm:p-6 md:p-8">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 sm:mb-8">
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-2 sm:mb-0">Study Plan Generator</h1>
+        <div className="flex items-center gap-4">
+          <span className="text-xs sm:text-sm text-gray-600">Create and manage your study plans</span>
+          {session?.user && (
+            <span className="text-xs text-green-600">Signed in as {session.user.email}</span>
+          )}
+          {!session?.user && (
+            <span className="text-xs text-red-600">Not signed in</span>
+          )}
+        </div>
+      </div>
+      
+      <div className="w-full max-w-full sm:max-w-10xl">
+        <StudyPlanForm onPlanGenerated={handlePlanGenerated} />
+      </div>
+
+      {/* Stored Plans Section */}
+      <div id="stored-plans" className="mt-8 sm:mt-12">
+        <Separator className="my-6 sm:my-8" />
+        <h2 className="text-xl sm:text-2xl font-bold mb-4 sm:mb-6">Your Study Plans</h2>
+        
+        {/* Force refresh button for debugging/fixing display issues */}
+        <div className="mb-4 flex items-center justify-between">
+          <div className="text-sm text-gray-600">
+            {storedPlans.length > 0 
+              ? `Found ${storedPlans.length} study plan${storedPlans.length === 1 ? '' : 's'}` 
+              : 'No study plans found'
+            }
+            <span className="text-xs text-blue-600 ml-2">
+              (Using user: {session?.user?.email || 'rishabh45628@gmail.com'})
+            </span>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => fetchPlans(true)}
+              disabled={loading}
+              className="text-xs"
+            >
+              {loading ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
+              Refresh Plans
+            </Button>            
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={handleCleanupAIPlans}
+              disabled={loading}
+              className="text-xs"
+            >
+              {loading ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
+              🧹 Clean AI Plans
+            </Button>            <Button
+              variant="outline"
+              size="sm"
+              onClick={async () => {
+                const userId = session?.user?.email || 'rishabh45628@gmail.com';
+                console.log('Direct API test for user:', userId);
+                try {
+                  const response = await fetch(`/api/study-plan/${userId}`);
+                  const data = await response.json();
+                  console.log('Direct API response:', response.status, data);
+                } catch (err) {
+                  console.error('Direct API error:', err);
+                }
+              }}
+              className="text-xs"
+            >
+              Debug API
+            </Button>
+          </div>
+        </div>
+        
+        {loading ? (
+          <div className="space-y-4 sm:space-y-6">
+            <Skeleton className="h-[150px] sm:h-[200px] w-full" />
+            <Skeleton className="h-[150px] sm:h-[200px] w-full" />
+          </div>
+        ) : storedPlans.length > 0 ? (
+          <>
+            <div className="space-y-4 sm:space-y-6">
+              {currentPlans.map((plan) => (
+                <StoredPlan
+                  key={plan._id}
+                  plan={plan}
+                  onDelete={handlePlanDelete}
+                />
+              ))}
+            </div>
+            {totalPages > 1 && (
+              <PaginationNav
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onPageChange={setCurrentPage}
+              />
+            )}
+          </>
+        ) : (
+          <div className="text-center py-8 text-gray-500">
+            <p>You haven&apos;t created any study plans yet.</p>
+            <p className="mt-2">Use the form above to create your first study plan!</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
