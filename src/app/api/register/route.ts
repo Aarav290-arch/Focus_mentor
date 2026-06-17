@@ -5,6 +5,13 @@ import bcrypt from "bcryptjs";
 
 export async function POST(req: Request) {
   try {
+    if (!process.env.MONGODB_URI) {
+      return NextResponse.json(
+        { message: "Registration is unavailable until MONGODB_URI is configured" },
+        { status: 503 }
+      );
+    }
+
     const { name, email, password } = await req.json();
     
     await connectMongoDB();

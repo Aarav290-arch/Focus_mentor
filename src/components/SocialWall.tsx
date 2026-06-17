@@ -9,7 +9,7 @@ export default function SocialWall() {
       {tweets.map((tweetId) => (
         <div
           key={tweetId}
-          className="light min-w-[350px] max-w-xs flex-shrink-0 rounded-xl p-2"
+          className="light min-w-[350px] max-w-xs flex-shrink-0 rounded-xl border-2 border-black bg-white p-4 shadow-[4px_4px_0_0_#000]"
         >
           <SafeTweet id={tweetId} />
         </div>
