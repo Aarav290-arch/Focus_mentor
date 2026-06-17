@@ -37,25 +37,33 @@ export const authOptions: AuthOptions = {
           await connectMongoDB();
           const user = await User.findOne({ email: credentials.email });
 
-          if (!user) {
-            return null;
+          if (user) {
+            const passwordsMatch = await bcrypt.compare(credentials.password, user.password);
+            if (passwordsMatch) {
+              return {
+                id: user._id.toString(),
+                name: user.name,
+                email: user.email,
+              };
+            }
           }
-
-          const passwordsMatch = await bcrypt.compare(credentials.password, user.password);
-
-          if (!passwordsMatch) {
-            return null;
+          
+          // In development, allow login with any credentials
+          if (process.env.NODE_ENV === 'development') {
+            console.log("Development mode - allowing login with email:", credentials.email);
+            return {
+              id: 'dev-user-' + credentials.email + '-' + Date.now(),
+              name: credentials.email.split('@')[0],
+              email: credentials.email,
+            };
           }
-
-          return {
-            id: user._id.toString(),
-            name: user.name,
-            email: user.email,
-          };
+          
+          return null;
         } catch (error) {
           console.error("Error during authentication:", error);
-          // Create default user for development
+          // Allow dev users to test without MongoDB
           if (process.env.NODE_ENV === 'development') {
+            console.log("Development mode - DB error, allowing login anyway");
             return {
               id: 'dev-user-' + Date.now(),
               name: credentials.email.split('@')[0],
@@ -94,6 +102,6 @@ export const authOptions: AuthOptions = {
     strategy: "jwt",
     maxAge: 30 * 24 * 60 * 60, // 30 days
   },
-  debug: false,
-  secret: process.env.NEXTAUTH_SECRET,
+  debug: process.env.NODE_ENV === 'development',
+  secret: process.env.NEXTAUTH_SECRET || 'fallback-secret-dev-only-change-in-production',
 };

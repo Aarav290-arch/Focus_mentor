@@ -8,7 +8,7 @@ export async function middleware(request: NextRequest) {
   const isPublicPath = path === "/" || path === "/register" || path === "/signin";
   const token = await getToken({
     req: request,
-    secret: process.env.NEXTAUTH_SECRET,
+    secret: process.env.NEXTAUTH_SECRET || 'fallback-secret-dev-only-change-in-production',
   });
 
   if (isPublicPath && token) {

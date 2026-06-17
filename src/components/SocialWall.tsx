@@ -1,5 +1,5 @@
 "use client";
-import { Tweet } from "react-tweet";
+import SafeTweet from "@/components/SafeTweet";
 import { tweets } from "@/components/data";
 import { Marquee } from "@/components/magicui/marquee";
 
@@ -11,7 +11,7 @@ export default function SocialWall() {
           key={tweetId}
           className="light min-w-[350px] max-w-xs flex-shrink-0 rounded-xl p-2"
         >
-          <Tweet id={tweetId} />
+          <SafeTweet id={tweetId} />
         </div>
       ))}
     </Marquee>
