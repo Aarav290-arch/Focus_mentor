@@ -104,11 +104,25 @@ export default function SyllabusManager({ userId, onSyllabusChange }: SyllabusMa
     }
   };
 
-  const deleteSyllabus = async (syllabusId: string) => {
+  const deleteSyllabus = async (syllabusId: string, syllabus?: Syllabus) => {
     if (!confirm('Are you sure you want to delete this syllabus?')) return;
     
     console.log('Attempting to delete syllabus:', { syllabusId, userId });
     setDeletingId(syllabusId);
+
+    const deletePayload = {
+      syllabusId,
+      userId,
+      syllabus: syllabus ? {
+        _id: syllabus._id,
+        university: syllabus.university,
+        course: syllabus.course,
+        semester: syllabus.semester,
+        year: syllabus.year,
+        originalName: syllabus.originalName,
+        createdAt: syllabus.createdAt,
+      } : undefined,
+    };
     
     try {
       const response = await fetch(`/api/syllabus/${syllabusId}`, {
@@ -116,7 +130,7 @@ export default function SyllabusManager({ userId, onSyllabusChange }: SyllabusMa
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ userId }),
+        body: JSON.stringify(deletePayload),
       });
 
       const result = await response.json();
@@ -136,7 +150,7 @@ export default function SyllabusManager({ userId, onSyllabusChange }: SyllabusMa
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ syllabusId, userId, forceDelete: true }),
+          body: JSON.stringify({ ...deletePayload, forceDelete: true }),
         });
 
         const debugResult = await debugResponse.json();
@@ -254,7 +268,7 @@ export default function SyllabusManager({ userId, onSyllabusChange }: SyllabusMa
                       variant="destructive"
                       size="sm"
                       disabled={deletingId === syllabus._id}
-                      onClick={() => deleteSyllabus(syllabus._id)}
+                      onClick={() => deleteSyllabus(syllabus._id, syllabus)}
                     >
                       {deletingId === syllabus._id ? (
                         <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>

@@ -87,9 +87,8 @@ export async function DELETE(request: NextRequest, { params }: { params: { sylla
   try {
     const { syllabusId } = params;
     const body = await request.json();
-    const { userId } = body;
 
-    if (!syllabusId || !userId) {
+    if (!syllabusId || !body?.userId) {
       return NextResponse.json({
         error: 'Syllabus ID and User ID are required'
       }, { status: 400 });
@@ -105,7 +104,7 @@ export async function DELETE(request: NextRequest, { params }: { params: { sylla
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ userId }),
+      body: JSON.stringify(body),
     });
 
     const result = await backendResponse.json();

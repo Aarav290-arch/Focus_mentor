@@ -231,24 +231,96 @@ router.put('/:syllabusId/activate', async (req, res) => {
   }
 });
 
+const normalizeString = (value) => (typeof value === 'string' ? value.trim().toLowerCase() : '');
+
+const syllabusMatchesMetadata = (doc, syllabus) => {
+  if (!syllabus) {
+    return false;
+  }
+
+  const requiredFields = ['university', 'course', 'originalName'];
+  const optionalFields = ['semester', 'year'];
+
+  for (const field of requiredFields) {
+    if (normalizeString(doc[field]) !== normalizeString(syllabus[field])) {
+      return false;
+    }
+  }
+
+  for (const field of optionalFields) {
+    const expectedValue = normalizeString(syllabus[field]);
+    if (expectedValue && normalizeString(doc[field]) !== expectedValue) {
+      return false;
+    }
+  }
+
+  return true;
+};
+
+const deleteSyllabusDocument = async ({ syllabusId, userId, syllabus, allowCrossUser = false }) => {
+  const normalizedSyllabusId = typeof syllabusId === 'string' ? syllabusId.trim() : '';
+  const normalizedUserId = typeof userId === 'string' ? userId.trim() : '';
+
+  const exactQuery = normalizedSyllabusId
+    ? allowCrossUser || !normalizedUserId
+      ? { _id: normalizedSyllabusId }
+      : { _id: normalizedSyllabusId, userId: normalizedUserId }
+    : null;
+
+  if (exactQuery) {
+    const exactMatch = await Syllabus.findOneAndDelete(exactQuery);
+    if (exactMatch) {
+      return exactMatch;
+    }
+  }
+
+  const candidateQuery = allowCrossUser || !normalizedUserId ? {} : { userId: normalizedUserId };
+  const candidates = await Syllabus.find(candidateQuery).select('filePath userId university course semester year originalName');
+
+  const matchedSyllabus = candidates.find((doc) => {
+    const documentId = doc._id ? doc._id.toString() : '';
+    if (normalizedSyllabusId && documentId === normalizedSyllabusId) {
+      return true;
+    }
+
+    if (!syllabus) {
+      return false;
+    }
+
+    if (!allowCrossUser && normalizedUserId && normalizeString(doc.userId) !== normalizedUserId) {
+      return false;
+    }
+
+    return syllabusMatchesMetadata(doc, syllabus);
+  });
+
+  if (!matchedSyllabus) {
+    return null;
+  }
+
+  return Syllabus.findByIdAndDelete(matchedSyllabus._id);
+};
+
 // Delete syllabus
 router.delete('/:syllabusId', async (req, res) => {
   try {
     const { syllabusId } = req.params;
-    const { userId } = req.body;
+    const { userId, syllabus } = req.body;
 
-    const syllabus = await Syllabus.findOneAndDelete({ 
-      _id: syllabusId, 
-      userId 
+    const deletedSyllabus = await deleteSyllabusDocument({
+      syllabusId,
+      userId,
+      syllabus,
+      allowCrossUser: false
     });
 
-    if (!syllabus) {
+    if (!deletedSyllabus) {
       return res.status(404).json({ error: 'Syllabus not found' });
     }
 
     // Clean up uploaded file
-    if (syllabus.filePath && fs.existsSync(syllabus.filePath)) {
-      fs.unlinkSync(syllabus.filePath);
+    if (deletedSyllabus.filePath && fs.existsSync(deletedSyllabus.filePath)) {
+      fs.unlinkSync(deletedSyllabus.filePath);
     }
 
     res.json({ 
@@ -265,27 +337,33 @@ router.delete('/:syllabusId', async (req, res) => {
 router.delete('/debug/force-delete/:syllabusId', async (req, res) => {
   try {
     const { syllabusId } = req.params;
+    const { userId, syllabus } = req.body || {};
     console.log('FORCE DELETE: syllabusId:', syllabusId);
 
-    const syllabus = await Syllabus.findByIdAndDelete(syllabusId);
+    const deletedSyllabus = await deleteSyllabusDocument({
+      syllabusId,
+      userId,
+      syllabus,
+      allowCrossUser: true
+    });
 
-    if (!syllabus) {
+    if (!deletedSyllabus) {
       return res.status(404).json({ error: 'Syllabus not found in database' });
     }
 
     // Clean up uploaded file
-    if (syllabus.filePath && fs.existsSync(syllabus.filePath)) {
-      fs.unlinkSync(syllabus.filePath);
+    if (deletedSyllabus.filePath && fs.existsSync(deletedSyllabus.filePath)) {
+      fs.unlinkSync(deletedSyllabus.filePath);
     }
 
     res.json({ 
       success: true, 
       message: 'Syllabus force deleted successfully',
       deletedSyllabus: {
-        id: syllabus._id,
-        userId: syllabus.userId,
-        university: syllabus.university,
-        course: syllabus.course
+        id: deletedSyllabus._id,
+        userId: deletedSyllabus.userId,
+        university: deletedSyllabus.university,
+        course: deletedSyllabus.course
       }
     });
   } catch (error) {

@@ -49,9 +49,9 @@ export async function GET(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     const body = await request.json();
-    const { syllabusId, userId, forceDelete } = body;
+    const { syllabusId, forceDelete } = body;
     
-    console.log('DEBUG DELETE: syllabusId:', syllabusId, 'userId:', userId, 'forceDelete:', forceDelete);
+    console.log('DEBUG DELETE: syllabusId:', syllabusId, 'forceDelete:', forceDelete);
     
     if (forceDelete) {
       // Try to delete without userId constraint
@@ -60,6 +60,8 @@ export async function DELETE(request: NextRequest) {
         headers: {
           'Content-Type': 'application/json',
         }
+        ,
+        body: JSON.stringify(body)
       });
       
       const result = await response.json();
@@ -72,7 +74,7 @@ export async function DELETE(request: NextRequest) {
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ userId }),
+      body: JSON.stringify(body),
     });
 
     const result = await response.json();
