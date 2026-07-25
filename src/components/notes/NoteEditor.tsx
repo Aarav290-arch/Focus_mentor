@@ -14,7 +14,7 @@ interface Note {
 
 interface NoteEditorProps {
   note: Note | null;
-  onSave: () => void;
+  onSave: (savedNote?: Record<string, unknown>) => void;
   onCancel: () => void;
 }
 
@@ -47,6 +47,7 @@ export default function NoteEditor({ note, onSave, onCancel }: NoteEditorProps) 
       });
 
       if (!response.ok) throw new Error('Failed to save note');
+      const savedNote = await response.json();
 
       toast({
         variant: "success",
@@ -54,7 +55,7 @@ export default function NoteEditor({ note, onSave, onCancel }: NoteEditorProps) 
         description: "Note saved successfully",
       });
 
-      onSave();
+      onSave(savedNote);
     } catch (error) {
       console.error('Error saving note:', error);
       toast({

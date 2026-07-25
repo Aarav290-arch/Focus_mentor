@@ -4,6 +4,9 @@ import { connectMongoDB } from "@/lib/mongodb";
 import { authOptions } from "@/lib/auth";
 import Note from "@/models/note";
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 // Get all notes for the user
 export async function GET(req: Request) {
   try {
@@ -23,7 +26,11 @@ export async function GET(req: Request) {
       isArchived: false
     }).sort({ updatedAt: -1 });
 
-    return NextResponse.json(notes);
+    return NextResponse.json(notes, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0'
+      }
+    });
   } catch (error) {
     console.error("Error fetching notes:", error);
     return NextResponse.json(

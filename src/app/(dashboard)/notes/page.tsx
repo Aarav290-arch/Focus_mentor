@@ -35,16 +35,20 @@ export default function NotesPage() {
   const [isCreating, setIsCreating] = useState(false);
   const [showSidebar, setShowSidebar] = useState(false);
 
+  const formatNote = useCallback((note: NoteData): Note => ({
+    ...note,
+    content: Array.isArray(note.content) ? note.content[0]?.content || '' : (note.content as unknown as string) || ''
+  }), []);
+
   const fetchNotes = useCallback(async () => {
     try {
-      const response = await fetch('/api/notes');
+      const response = await fetch(`/api/notes?t=${Date.now()}`, {
+        cache: 'no-store',
+      });
       if (!response.ok) throw new Error('Failed to fetch notes');
       const data = await response.json();
       // Convert content array to string
-      const formattedNotes = data.map((note: NoteData) => ({
-        ...note,
-        content: Array.isArray(note.content) ? note.content[0]?.content || '' : note.content || ''
-      }));
+      const formattedNotes = data.map((note: NoteData) => formatNote(note));
       setNotes(formattedNotes);
     } catch (error) {
       console.error('Error fetching notes:', error);
@@ -56,7 +60,25 @@ export default function NotesPage() {
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, [formatNote, toast]);
+
+  const handleSave = async (savedNote?: Record<string, unknown>) => {
+    if (savedNote && typeof savedNote._id === 'string') {
+      const normalizedSavedNote = formatNote(savedNote as unknown as NoteData);
+      setNotes(prev => {
+        const existingIndex = prev.findIndex(note => note._id === normalizedSavedNote._id);
+        if (existingIndex >= 0) {
+          const next = [...prev];
+          next[existingIndex] = normalizedSavedNote;
+          return next;
+        }
+        return [normalizedSavedNote, ...prev];
+      });
+    }
+
+    await fetchNotes();
+    setIsCreating(false);
+  };
 
   useEffect(() => {
     fetchNotes();
@@ -121,10 +143,7 @@ export default function NotesPage() {
               {isCreating || selectedNote ? (
                 <NoteEditor
                   note={selectedNote}
-                  onSave={async () => {
-                    await fetchNotes();
-                    setIsCreating(false);
-                  }}
+                  onSave={handleSave}
                   onCancel={() => {
                     setIsCreating(false);
                     setSelectedNote(null);
