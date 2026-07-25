@@ -53,7 +53,9 @@ export default function SyllabusManager({ userId, onSyllabusChange }: SyllabusMa
     console.log('Fetching syllabi for userId:', userId);
     
     try {
-      const response = await fetch(`/api/syllabus/user/${userId}`);
+      const response = await fetch(`/api/syllabus/user/${userId}?t=${Date.now()}`, {
+        cache: 'no-store',
+      });
       const result = await response.json();
       
       console.log('Syllabi fetch response:', { status: response.status, result });
